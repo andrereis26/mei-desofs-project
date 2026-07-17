@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Lombok/JPA DTO and Spring constructor-injection patterns produce broad mutable-representation noise. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- File paths are normalized and checked against the configured storage root in FileStorageService. -->
+    <Match>
+        <Class name="com.desofs.project.infrastructure.filesystem.FileStorageService"/>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+    </Match>
+
+    <!-- DocumentService sanitizes filenames and delegates root-bound checks to FileStorageService. -->
+    <Match>
+        <Class name="com.desofs.project.document.services.DocumentService"/>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+    </Match>
+</FindBugsFilter>

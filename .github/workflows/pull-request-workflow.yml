@@ -1,0 +1,592 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pull-request-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+env:
+  JAVA_VERSION: "17"
+  MAVEN_CLI_OPTS: -B -ntp -f backend/pom.xml
+
+jobs:
+  secure-coding-checklist:
+    name: secure-coding-checklist
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+
+    steps:
+      - name: Validate SDR-001 checklist usage in PR description
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info('No pull_request payload found; skipping.');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = pr.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+
+            const changedPaths = files.map(f => f.filename);
+            const touchesBackend = changedPaths.some(path => path.startsWith('backend/'));
+
+            if (!touchesBackend) {
+              core.info('No backend changes detected. SDR-001 gate passes.');
+              return;
+            }
+
+            const body = (pr.body || '').toLowerCase();
+            const problems = [];
+
+            if (!body.includes('## secure coding checklist (sdr-001)')) {
+              problems.push('Missing section **Secure coding checklist (SDR-001)** in PR description.');
+            }
+
+            const requiredChecks = [
+              { label: 'OWASP/CERT secure coding confirmation', regex: /\[x\].*owasp secure coding practices/ },
+              { label: 'input validation and safe error handling confirmation', regex: /\[x\].*input handling, validation, and output\/error behavior/ },
+              { label: 'authentication/authorization/session impact confirmation', regex: /\[x\].*authentication\/authorization\/session impact/ },
+              { label: 'no hardcoded secrets or sensitive logging confirmation', regex: /\[x\].*no secrets are hardcoded/ },
+              { label: 'automated tests update (or justification) confirmation', regex: /\[x\].*(added or updated automated tests|justified why not needed)/ },
+            ];
+
+            for (const check of requiredChecks) {
+              if (!check.regex.test(body)) {
+                problems.push(`Missing checked item: ${check.label}.`);
+              }
+            }
+
+            if (problems.length) {
+              const details = [
+                'SDR-001 gate failed for this PR.',
+                '',
+                'Backend files detected (first 50):',
+                ...changedPaths.filter(path => path.startsWith('backend/')).slice(0, 50).map(path => `- ${path}`),
+                '',
+                'Fix required:',
+                ...problems.map(problem => `- ${problem}`),
+                '',
+                'Action: update the PR description using .github/PULL_REQUEST_TEMPLATE.md and mark checklist items as completed.',
+              ].join('\n');
+
+              core.setFailed(details);
+              return;
+            }
+
+            core.info('SDR-001 gate passed. Secure coding checklist is present and confirmed.');
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven package build
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: clean package
+          extra-args: -Dmaven.test.skip=true -Djacoco.skip=true
+
+      - name: Upload backend classes
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-classes
+          path: backend/target/classes
+          if-no-files-found: error
+
+      - name: Upload backend jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          if-no-files-found: error
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven unit tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipITs=true
+
+      - name: Preserve unit coverage report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f backend/target/site/jacoco/jacoco.xml ]]; then
+            cp backend/target/site/jacoco/jacoco.xml backend/target/site/jacoco/jacoco-unit.xml
+          fi
+
+      - name: Publish Surefire report
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Surefire tests
+          path: backend/target/surefire-reports/*.xml
+          reporter: java-junit
+
+      - name: Upload unit test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: |
+            backend/target/surefire-reports/*.xml
+            backend/target/site/jacoco/jacoco.xml
+            backend/target/site/jacoco/jacoco-unit.xml
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven integration tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipUnitTests=true
+
+      - name: Preserve integration coverage report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f backend/target/site/jacoco/jacoco.xml ]]; then
+            cp backend/target/site/jacoco/jacoco.xml backend/target/site/jacoco/jacoco-integration.xml
+          fi
+
+      - name: Publish Failsafe report
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Failsafe tests
+          path: backend/target/failsafe-reports/TEST-*.xml
+          reporter: java-junit
+
+      - name: Upload integration test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-test-reports
+          path: |
+            backend/target/failsafe-reports/TEST-*.xml
+            backend/target/site/jacoco/jacoco-integration.xml
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: ./.github/actions/run-gitleaks
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+
+  sast-spotbugs:
+    name: sast-spotbugs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run SpotBugs security analysis
+        uses: ./.github/actions/run-spotbugs
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+
+      - name: Upload SpotBugs report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sast-reports
+          path: |
+            backend/target/spotbugs*.xml
+            backend/target/spotbugsXml.xml
+          if-no-files-found: warn
+
+  sca-dependency-check:
+    name: sca-dependency-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run OWASP Dependency-Check
+        uses: ./.github/actions/run-dependency-check
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          nvd-api-key: ${{ secrets.NVD_API_KEY }}
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sca-reports
+          path: |
+            backend/target/dependency-check-report.xml
+            backend/target/dependency-check-report.html
+          if-no-files-found: warn
+
+  sonarcloud:
+    name: sonarcloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - build
+      - unit-tests
+      - integration-tests
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Generate coverage for SonarQube
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: clean verify
+          extra-args: -DskipITs=true
+
+      - name: Run SonarQube scan
+        uses: ./.github/actions/run-sonar
+        with:
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+
+  dast-zap-baseline:
+    name: dast-zap-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download backend jar
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-jar
+          path: backend/target
+
+      - name: Prepare DAST runtime environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          postgres_password="$(openssl rand -hex 24)"
+          rate_limit_redis_password="$(openssl rand -hex 24)"
+          token_revocation_redis_password="$(openssl rand -hex 24)"
+          jwt_secret="$(openssl rand -hex 32)"
+
+          {
+            echo "POSTGRES_DB=desofs_db"
+            echo "POSTGRES_USER=desofs_user"
+            echo "POSTGRES_PASSWORD=${postgres_password}"
+            echo "DB_URL=jdbc:postgresql://db:5432/desofs_db"
+            echo "DB_USERNAME=desofs_user"
+            echo "DB_PASSWORD=${postgres_password}"
+            echo "FILE_STORAGE_PATH=/opt/desofs/storage"
+            echo "FILE_MAX_SIZE_BYTES=52428800"
+            echo "RATE_LIMIT_REDIS_HOST=redis-rate-limit"
+            echo "RATE_LIMIT_REDIS_PORT=6379"
+            echo "RATE_LIMIT_REDIS_PASSWORD=${rate_limit_redis_password}"
+            echo "RATE_LIMIT_REDIS_TIMEOUT=2s"
+            echo "RATE_LIMIT_REDIS_CONNECT_TIMEOUT=1s"
+            echo "RATE_LIMIT_REDIS_SSL=false"
+            echo "AUTH_RATE_LIMIT_MAX_PER_IP=200"
+            echo "AUTH_RATE_LIMIT_WINDOW_SECONDS=60"
+            echo "REGISTER_RATE_LIMIT_MAX_PER_IP=200"
+            echo "REGISTER_RATE_LIMIT_WINDOW_SECONDS=300"
+            echo "AUTH_RATE_LIMIT_MAX_PER_IDENTITY=200"
+            echo "REGISTER_RATE_LIMIT_MAX_PER_IDENTITY=200"
+            echo "TOKEN_REVOCATION_STORE=redis"
+            echo "TOKEN_REVOCATION_REDIS_HOST=redis-token-revocation"
+            echo "TOKEN_REVOCATION_REDIS_PORT=6379"
+            echo "TOKEN_REVOCATION_REDIS_PASSWORD=${token_revocation_redis_password}"
+            echo "TOKEN_REVOCATION_REDIS_DATABASE=1"
+            echo "TOKEN_REVOCATION_REDIS_TIMEOUT=2s"
+            echo "TOKEN_REVOCATION_REDIS_SSL=false"
+            echo "TOKEN_REVOCATION_REDIS_KEY_PREFIX=revoked-token:"
+            echo "JWT_SECRET=${jwt_secret}"
+            echo "JWT_EXPIRATION=86400000"
+          } > .env
+
+      - name: Start API for DAST
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --project-name desofs-dast --env-file .env \
+            -f docker-compose.yml \
+            -f .github/dast/docker-compose.dast.yml \
+            up -d --build
+
+      - name: Wait for API readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:9090/actuator/health/readiness | grep -q '"status":"UP"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+
+          docker compose --project-name desofs-dast logs --no-color --tail=200
+          exit 1
+
+      - name: Acquire DAST authentication token
+        id: dast-auth
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response="$(curl -fsS \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"bootstrap_admin","password":"ChangeMe123!"}' \
+            http://127.0.0.1:8080/api/auth/login)"
+
+          token="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["token"])' <<< "${response}")"
+          echo "::add-mask::${token}"
+          echo "token=${token}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run OWASP ZAP API baseline scan
+        shell: bash
+        env:
+          DAST_AUTH_TOKEN: ${{ steps.dast-auth.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p zap-reports
+          chmod 777 zap-reports
+
+          zap_options="-config replacer.full_list(0).description=auth-header"
+          zap_options+=" -config replacer.full_list(0).enabled=true"
+          zap_options+=" -config replacer.full_list(0).matchtype=REQ_HEADER"
+          zap_options+=" -config replacer.full_list(0).matchstr=Authorization"
+          zap_options+=" -config replacer.full_list(0).replacement=Bearer ${DAST_AUTH_TOKEN}"
+
+          docker run --rm --network host \
+            -v "${PWD}/.github/dast:/zap/dast:ro" \
+            -v "${PWD}/zap-reports:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+              -t /zap/dast/openapi.yml \
+              -f openapi \
+              -S \
+              -I \
+              -J zap-api-scan.json \
+              -r zap-api-scan.html \
+              -w zap-api-scan.md \
+              -x zap-api-scan.xml \
+              -z "${zap_options}"
+
+      - name: Enforce DAST High/Critical gate
+        run: python3 .github/scripts/zap-gate.py zap-reports/zap-api-scan.json
+
+      - name: Upload DAST reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-reports
+          path: |
+            zap-reports/zap-api-scan.json
+            zap-reports/zap-api-scan.html
+            zap-reports/zap-api-scan.md
+            zap-reports/zap-api-scan.xml
+          if-no-files-found: warn
+
+      - name: Collect DAST runtime logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p zap-reports
+          docker compose --project-name desofs-dast logs --no-color > zap-reports/dast-runtime.log || true
+
+      - name: Upload DAST runtime logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-runtime-logs
+          path: zap-reports/dast-runtime.log
+          if-no-files-found: ignore
+
+      - name: Stop DAST runtime
+        if: always()
+        shell: bash
+        run: docker compose --project-name desofs-dast down -v --remove-orphans
+
+  required-devsecops-gates:
+    name: required-devsecops-gates
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.actor != 'dependabot[bot]' }}
+    needs:
+      - secure-coding-checklist
+      - build
+      - unit-tests
+      - integration-tests
+      - secret-scan
+      - sast-spotbugs
+      - sca-dependency-check
+      - sonarcloud
+      - dast-zap-baseline
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download unit test reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: unit-test-reports
+          path: test-reports/unit
+
+      - name: Download integration test reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: integration-test-reports
+          path: test-reports/integration
+
+      - name: Download SCA reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: sca-reports
+          path: security-reports/sca
+
+      - name: Download SAST reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: sast-reports
+          path: security-reports/sast
+
+      - name: Download DAST reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: dast-reports
+          path: security-reports/dast
+
+      - name: Test and coverage summary
+        if: always()
+        run: python3 .github/scripts/test-summary.py
+
+      - name: Security summary
+        if: always()
+        run: python3 .github/scripts/security-summary.py
+
+      - name: SonarCloud summary
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: python3 .github/scripts/sonar-summary.py
+
+      - name: Enforce all required gates passed
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const needs = ${{ toJson(needs) }};
+            const failed = Object.entries(needs)
+              .filter(([, value]) => value.result !== 'success')
+              .map(([key, value]) => `${key}: ${value.result}`);
+
+            if (failed.length > 0) {
+              core.setFailed(`Required DevSecOps gates failed: ${failed.join(', ')}`);
+              return;
+            }
+
+            core.info('All required DevSecOps gates passed.');

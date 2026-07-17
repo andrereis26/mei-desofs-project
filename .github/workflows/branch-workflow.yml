@@ -1,0 +1,103 @@
+name: Feature Branch CI
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+
+concurrency:
+  group: feature-branch-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "17"
+  MAVEN_CLI_OPTS: -B -ntp -f backend/pom.xml
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run quick Maven package build
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: clean package
+          extra-args: -Dmaven.test.skip=true -Djacoco.skip=true
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven unit tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipITs=true
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven integration tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipUnitTests=true
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: ./.github/actions/run-gitleaks
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}

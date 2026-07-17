@@ -1,0 +1,42 @@
+# Phase 1 - Secure Development Requirements
+
+## 1. Scope
+In scope:
+- Development-time security activities that prevent vulnerabilities during coding, review, and integration.
+- Mandatory security tooling and quality gates for pull requests and CI/CD.
+- Evidence developers must provide to prove security controls were implemented and tested.
+
+Out of scope:
+- Runtime architecture controls already defined in other Phase 1 documents.
+
+## 2. Requirement Catalog
+
+| ID | Secure Development Requirement | Justification | Mandatory Development Activities | Verification Criteria | Status | Planned Verification Artifact |
+|---|---|---|---|---|---|---|
+| SDR-001 | Follow secure coding guidelines for every backend change. | Consistent secure coding standards reduce recurring implementation flaws. | Apply OWASP Secure Coding Practices and CERT Oracle Java Secure Coding rules in implementation decisions. Use a repository-level secure coding checklist in every PR. | Every PR includes a completed secure coding checklist; security reviewer confirms no unchecked critical rule. | Defined | PR template checklist + review evidence |
+| SDR-002 | Frequently consult ASVS during development work. | Continuous consultation reduces control gaps and keeps implementation aligned with recognized security controls. | At task start and PR submission, developers document which ASVS sections were consulted and how they influenced code changes. Perform a sprint-level ASVS alignment check. | Security-impacting PRs include an "ASVS consulted" section; sprint audit shows full coverage for scoped security changes. | Defined | PR notes + sprint ASVS alignment record |
+| SDR-003 | Perform third-party code and dependency reviews before adoption. | Third-party code can introduce vulnerabilities, malicious behavior, or license risk. | For each new dependency, external snippet, or generated external code: review source trust, maintenance activity, known CVEs, and license compatibility. Pin exact dependency versions in `pom.xml`. | Dependency-introducing PRs include completed third-party review template and explicit approval from designated reviewer. | Defined | Third-party review checklist + dependency approval log |
+| SDR-004 | Enforce secret management and git leak prevention controls. | Secret leakage in source control creates immediate compromise risk. | Store CI credentials only in GitHub Actions Secrets. Enforce local pre-commit scanning with Gitleaks and GitLeaks-compatible `git-secrets` hooks. Keep `.env` and secret files ignored by git. Enable GitHub Secret Scanning and Push Protection. | Pre-commit hooks run successfully on security-sensitive branches, CI secret scan passes, and no secret exposure alerts remain unresolved. | Defined | Pre-commit configuration + CI secret scan report + GitHub alerts review |
+| SDR-005 | Run automated code review and SAST tooling on every pull request. | Automated analysis detects insecure patterns early and consistently. | Run SonarQube for each PR and main branch build, with SonarLint feedback during development. Configure rules for injection, authorization, path traversal, and insecure crypto usage. | Merge is blocked when any configured Critical/High security issue is open without approved exception. | Defined | GitHub Actions checks + SonarQube quality gate report + SonarLint analysis evidence |
+| SDR-006 | Run automated SCA and dependency risk controls continuously. | Vulnerable dependencies are a major attack vector and must be detected quickly. | Run Snyk SCA scan on each PR. Enable Dependabot continuous advisory monitoring and weekly update PRs. Review and triage dependency findings with CVSS-based priority. | No unresolved dependency finding with CVSS >= 7.0 is merged unless an approved, time-bound risk exception exists. | Defined | Snyk report + Dependabot PR log |
+| SDR-007 | Enforce a DevSecOps pipeline with security gates before merge. | Security checks must be mandatory and not optional developer steps. | Use GitHub Actions with required jobs: build, unit/integration tests, SAST (SonarQube and SonarLint development feedback), SCA (Snyk/Dependabot), secret scanning (Gitleaks), and container image scanning (Trivy). Use branch protection to require all security checks. | Protected branches reject merge when any required security job fails or is skipped. | Defined | CI workflow file review + required checks policy screenshot |
+| SDR-008 | Test security measures implemented in code changes. | Security controls are only reliable when validated by negative and abuse-oriented tests. | Add JUnit 5 and Spring MockMvc tests for each security-relevant change, including deny-path authorization, input validation, path traversal prevention, and safe error handling. Run OWASP ZAP baseline scan for release candidates. | Security-impacting changes are not merged without new or updated security tests and passing test evidence in CI. | Defined | Test cases + surefire reports + ZAP baseline report |
+| SDR-009 | Perform manual security-focused code reviews on all security-impacting PRs. | Human review catches logic and business-flow flaws not always detected by tools. | Apply a mandatory security review checklist covering authentication, authorization, input handling, file handling, secret use, and audit logging impacts. Require one trained security reviewer for high-risk areas. | Security-impacting PRs show checklist completion and required reviewer approval before merge. | Defined | PR review checklist + approval audit trail |
+| SDR-010 | Maintain clear security documentation in code and deliverables. | Poor documentation increases future misconfiguration and regression risk. | Document security-critical classes and methods with concise Javadoc describing trust boundaries, assumptions, and failure behavior. Update relevant Deliverables documents when controls, tools, or policies change. | Reviewers can trace each security-relevant change to updated code comments and documentation artifacts. | Defined | Code diff review + Deliverables update log |
+| SDR-011 | The deployment pipeline shall execute post-deployment validation tests against production. | Post-deployment validation detects regressions and exposures early. | After deployment, performance and lightweight security tests run; failures mark the deployment as failed. | Failures mark the deployment as failed; results are captured in CI artifacts. | Defined | CI job logs + test reports |
+| SDR-012 | The deployment pipeline shall automatically rollback to the previous stable version on validation failure. | Automated rollback limits exposure to faulty or insecure releases. | Trigger rollback when post-deployment validation fails; record the rollback outcome. | Rollback completes within the same pipeline run and is recorded. | Defined | CI pipeline logs + deployment record |
+| SDR-013 | Engineering guidelines shall document SonarLint setup, local dependency-check-maven usage. | Clear guidance standardizes secure development practices. | Update project documentation to include SonarLint setup, dependency-check-maven local runs. | Documentation is reproducible by a new developer without additional guidance. | Defined | Updated docs + reviewer confirmation |
+| SDR-014 | Security-focused tests shall be expanded for Sprint 2 changes and deny-path scenarios. | Expanded tests improve assurance for new functionality. | Add security-focused tests for Sprint 2 changes, including deny-path scenarios, and ensure they run in CI. | New tests pass in CI and evidence is recorded. | Defined | Test reports + CI logs |
+
+## 3. Secure Development Definition of Done
+A feature is secure-development complete only if:
+1. Secure coding checklist is completed and reviewed in the PR.
+2. ASVS consultation is documented in the task/PR notes.
+3. New third-party code or dependencies were reviewed and approved before merge.
+4. Secret leak prevention controls (GitHub Secrets, Gitleaks, and git-secrets hooks) passed.
+5. Automated code review checks (SonarQube with SonarLint development feedback) passed with no unapproved Critical/High findings.
+6. SCA checks (Snyk and Dependabot triage) passed under policy.
+7. DevSecOps pipeline security gates and branch protection requirements passed.
+8. Security tests for implemented controls were added/updated and passed.
+9. Manual security code review approvals were completed according to risk level.
+10. Security-relevant code and documentation were updated and traceable.

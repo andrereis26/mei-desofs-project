@@ -1,0 +1,22 @@
+@startuml
+title Flow F-003: Document upload
+
+actor Client
+participant "Document API" as DocumentAPI
+participant "Validation Boundary" as ValidationBoundary
+participant "Authorization Policy" as AuthorizationPolicy
+participant "Filesystem Adapter" as FilesystemAdapter
+participant "Metadata Repository" as MetadataRepository
+participant "Audit Service" as AuditService
+
+Client -> DocumentAPI: Upload document request
+DocumentAPI -> ValidationBoundary: Validate size + metadata
+ValidationBoundary --> DocumentAPI: Valid request
+DocumentAPI -> AuthorizationPolicy: Validate upload scope
+AuthorizationPolicy --> DocumentAPI: Authorized
+DocumentAPI -> FilesystemAdapter: Store content safely
+FilesystemAdapter --> DocumentAPI: Stored reference
+DocumentAPI -> MetadataRepository: Persist metadata
+DocumentAPI -> AuditService: Persist audit event
+DocumentAPI --> Client: Upload result
+@enduml

@@ -1,0 +1,15 @@
+@startuml
+title Flow F-002: Protected API access
+
+actor Client
+participant "Security Boundary" as SecurityBoundary
+participant "Service Layer" as ServiceLayer
+participant "Domain Policy" as DomainPolicy
+
+Client -> SecurityBoundary: Request + access token
+SecurityBoundary -> SecurityBoundary: Validate token
+SecurityBoundary -> ServiceLayer: Forward caller context
+ServiceLayer -> DomainPolicy: Enforce RBAC + object policy
+DomainPolicy --> ServiceLayer: Authorization decision
+ServiceLayer --> Client: Allow or deny response
+@enduml

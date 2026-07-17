@@ -1,0 +1,49 @@
+name: run-dependency-check
+description: Run OWASP Dependency-Check with the standard backend Maven options.
+
+inputs:
+  nvd-api-key:
+    description: NVD API key for Dependency-Check.
+    required: true
+  maven-cli-opts:
+    description: Shared Maven CLI options.
+    required: false
+    default: "-B -ntp -f backend/pom.xml"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Dependency-Check data
+      uses: actions/cache@v5
+      with:
+        path: ~/.owasp/dependency-check-data
+        key: ${{ runner.os }}-dependency-check-v2-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ runner.os }}-dependency-check-v2-
+          ${{ runner.os }}-dependency-check-
+
+    - name: Validate NVD API key
+      shell: bash
+      env:
+        NVD_API_KEY: ${{ inputs.nvd-api-key }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${NVD_API_KEY}" ]]; then
+          echo "NVD_API_KEY secret is required for Dependency-Check."
+          exit 1
+        fi
+
+    - name: Run OWASP Dependency-Check
+      shell: bash
+      env:
+        NVD_API_KEY: ${{ inputs.nvd-api-key }}
+        MAVEN_CLI_OPTS: ${{ inputs.maven-cli-opts }}
+      run: |
+        set -euo pipefail
+
+        read -r -a cli_opts <<< "${MAVEN_CLI_OPTS}"
+        mvn_args=(mvn)
+        mvn_args+=("${cli_opts[@]}")
+        mvn_args+=(-Dmaven.test.skip=true -Djacoco.skip=true "-DnvdApiKey=${NVD_API_KEY}" -DnvdApiDelay=4000 -DnvdMaxRetryCount=30 dependency-check:check)
+        "${mvn_args[@]}"

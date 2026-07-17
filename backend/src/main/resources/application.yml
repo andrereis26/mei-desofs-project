@@ -1,0 +1,135 @@
+spring:
+  application:
+    name: desofs-project
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/desofs_db}
+    username: ${DB_USERNAME:desofs_user}
+    password: ${DB_PASSWORD:desofs_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration: ${JWT_EXPIRATION:86400000}
+  token-revocation:
+    store: ${TOKEN_REVOCATION_STORE:redis}
+    redis:
+      host: ${TOKEN_REVOCATION_REDIS_HOST:localhost}
+      port: ${TOKEN_REVOCATION_REDIS_PORT:6380}
+      password: ${TOKEN_REVOCATION_REDIS_PASSWORD:desofs_password}
+      database: ${TOKEN_REVOCATION_REDIS_DATABASE:1}
+      timeout: ${TOKEN_REVOCATION_REDIS_TIMEOUT:2s}
+      ssl-enabled: ${TOKEN_REVOCATION_REDIS_SSL:false}
+      key-prefix: ${TOKEN_REVOCATION_REDIS_KEY_PREFIX:revoked-token:}
+  file-storage:
+    path: ${FILE_STORAGE_PATH:./uploads}
+  file-upload:
+    max-size: ${FILE_MAX_SIZE_BYTES:52428800}
+    allowed-content-types: ${FILE_ALLOWED_CONTENT_TYPES:application/pdf}
+  rate-limit:
+    redis:
+      host: ${RATE_LIMIT_REDIS_HOST:localhost}
+      port: ${RATE_LIMIT_REDIS_PORT:6379}
+      password: ${RATE_LIMIT_REDIS_PASSWORD:desofs_password}
+      timeout: ${RATE_LIMIT_REDIS_TIMEOUT:2s}
+      connect-timeout: ${RATE_LIMIT_REDIS_CONNECT_TIMEOUT:1s}
+      ssl-enabled: ${RATE_LIMIT_REDIS_SSL:false}
+
+bucket4j:
+  enabled: true
+  cache-to-use: redis-jedis
+  default-http-content-type: application/problem+json
+  default-http-response-body: >-
+    {"type":"about:rate-limit","title":"Too Many Requests","status":429,"detail":"Too many requests"}
+  filters:
+    - cache-name: rate-limit-buckets
+      url: ^/api/auth/login$
+      hide-http-response-headers: true
+      rate-limits:
+        - cache-key: getRemoteAddr()
+          bandwidths:
+            - capacity: ${AUTH_RATE_LIMIT_MAX_PER_IP:10}
+              time: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:60}
+              unit: SECONDS
+              refill-speed: INTERVAL
+    - cache-name: rate-limit-buckets
+      url: ^/api/auth/register$
+      hide-http-response-headers: true
+      rate-limits:
+        - cache-key: getRemoteAddr()
+          bandwidths:
+            - capacity: ${REGISTER_RATE_LIMIT_MAX_PER_IP:5}
+              time: ${REGISTER_RATE_LIMIT_WINDOW_SECONDS:300}
+              unit: SECONDS
+              refill-speed: INTERVAL
+  methods:
+    - name: auth-login-identity
+      cache-name: rate-limit-buckets
+      rate-limit:
+        cache-key: "@rateLimitKeyNormalizer.identity(#username)"
+        execute-condition: "@rateLimitKeyNormalizer.hasText(#username)"
+        bandwidths:
+          - capacity: ${AUTH_RATE_LIMIT_MAX_PER_IDENTITY:5}
+            time: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:60}
+            unit: SECONDS
+            refill-speed: INTERVAL
+    - name: auth-register-username
+      cache-name: rate-limit-buckets
+      rate-limit:
+        cache-key: "@rateLimitKeyNormalizer.identity(#username)"
+        execute-condition: "@rateLimitKeyNormalizer.hasText(#username)"
+        bandwidths:
+          - capacity: ${REGISTER_RATE_LIMIT_MAX_PER_IDENTITY:3}
+            time: ${REGISTER_RATE_LIMIT_WINDOW_SECONDS:300}
+            unit: SECONDS
+            refill-speed: INTERVAL
+    - name: auth-register-email
+      cache-name: rate-limit-buckets
+      rate-limit:
+        cache-key: "@rateLimitKeyNormalizer.identity(#email)"
+        execute-condition: "@rateLimitKeyNormalizer.hasText(#email)"
+        bandwidths:
+          - capacity: ${REGISTER_RATE_LIMIT_MAX_PER_IDENTITY:3}
+            time: ${REGISTER_RATE_LIMIT_WINDOW_SECONDS:300}
+            unit: SECONDS
+            refill-speed: INTERVAL
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,rateLimitRedis,tokenRevocationStore,ping
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true

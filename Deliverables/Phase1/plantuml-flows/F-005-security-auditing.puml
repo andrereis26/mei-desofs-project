@@ -1,0 +1,14 @@
+@startuml
+title Flow F-005: Security auditing
+
+participant "Policy Boundary" as PolicyBoundary
+participant "Business Service" as BusinessService
+participant "Audit Service" as AuditService
+database "Audit Repository" as AuditRepository
+
+PolicyBoundary -> BusinessService: Execute sensitive action
+BusinessService --> PolicyBoundary: Success or failure outcome
+PolicyBoundary -> AuditService: Create audit record
+AuditService -> AuditRepository: Persist actor/action/target/time/context
+AuditRepository --> AuditService: Stored
+@enduml

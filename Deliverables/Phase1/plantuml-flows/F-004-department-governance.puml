@@ -1,0 +1,17 @@
+@startuml
+title Flow F-004: Department governance
+
+actor Caller
+participant "Department API" as DepartmentAPI
+participant "Department Policy" as DepartmentPolicy
+participant "Department Service" as DepartmentService
+participant "Audit Service" as AuditService
+
+Caller -> DepartmentAPI: Request governance action
+DepartmentAPI -> DepartmentPolicy: Verify role + relationship
+DepartmentPolicy --> DepartmentAPI: Decision
+DepartmentAPI -> DepartmentService: Execute allowed action
+DepartmentService --> DepartmentAPI: Persisted outcome
+DepartmentAPI -> AuditService: Persist audit outcome
+DepartmentAPI --> Caller: Action response
+@enduml

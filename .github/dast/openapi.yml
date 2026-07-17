@@ -1,0 +1,134 @@
+openapi: 3.0.3
+info:
+  title: DESOFS Secure Document Management API
+  version: 0.0.1
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: bootstrap_admin
+              password: ChangeMe123!
+      responses:
+        "200":
+          description: Authenticated session token
+  /api/users:
+    get:
+      operationId: listUsers
+      responses:
+        "200":
+          description: User collection
+  /api/users/directory:
+    get:
+      operationId: listUserDirectory
+      responses:
+        "200":
+          description: User directory
+  /api/users/{id}:
+    get:
+      operationId: getUser
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: User profile
+  /api/departments:
+    get:
+      operationId: listDepartments
+      responses:
+        "200":
+          description: Department collection
+  /api/departments/directory:
+    get:
+      operationId: listDepartmentDirectory
+      responses:
+        "200":
+          description: Department directory
+  /api/departments/{id}:
+    get:
+      operationId: getDepartment
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Department details
+  /api/departments/by-name/{name}:
+    get:
+      operationId: getDepartmentByName
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: Engineering
+      responses:
+        "200":
+          description: Department details
+  /api/documents:
+    get:
+      operationId: listDocuments
+      responses:
+        "200":
+          description: Document collection
+  /api/documents/directory:
+    get:
+      operationId: listDocumentDirectory
+      responses:
+        "200":
+          description: Document directory
+  /api/documents/{id}:
+    get:
+      operationId: getDocument
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Document metadata
+  /api/documents/{id}/download:
+    get:
+      operationId: downloadDocument
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Document content
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UuidPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: 00000000-0000-0000-0000-000000000000
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          maxLength: 50
+        password:
+          type: string
+          maxLength: 128

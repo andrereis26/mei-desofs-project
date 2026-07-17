@@ -1,0 +1,62 @@
+name: run-sonar
+description: Run the SonarQube scan with cached scanner dependencies.
+
+inputs:
+  sonar-token:
+    description: Sonar token for the scan.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cache SonarQube packages
+      uses: actions/cache@v5
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
+
+    - name: Validate Sonar token
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${SONAR_TOKEN}" ]]; then
+          echo "SONAR_TOKEN secret is required for the SonarQube gate."
+          exit 1
+        fi
+
+    - name: Validate JaCoCo coverage report
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        report_path="backend/target/site/jacoco/jacoco.xml"
+        if [[ ! -s "${report_path}" ]]; then
+          echo "::error file=sonar-project.properties::Missing JaCoCo XML report at ${report_path}. Run Maven verify before the SonarQube scan."
+          echo "Coverage-related files found under backend/target:"
+          find backend/target -type f \( -name 'jacoco*.xml' -o -path '*/surefire-reports/*.xml' -o -path '*/failsafe-reports/*.xml' \) -print 2>/dev/null || true
+          exit 1
+        fi
+
+        python3 - <<'PY'
+        import xml.etree.ElementTree as ET
+
+        report = ET.parse("backend/target/site/jacoco/jacoco.xml").getroot()
+        line_counter = next(
+            counter for counter in report.findall("counter")
+            if counter.attrib.get("type") == "LINE"
+        )
+        covered = int(line_counter.attrib["covered"])
+        missed = int(line_counter.attrib["missed"])
+        total = covered + missed
+        percent = 100 * covered / total if total else 0
+        print(f"JaCoCo LINE coverage ready for SonarQube: {covered}/{total} ({percent:.2f}%)")
+        PY
+
+    - name: Run SonarQube scan
+      uses: SonarSource/sonarqube-scan-action@v8
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}

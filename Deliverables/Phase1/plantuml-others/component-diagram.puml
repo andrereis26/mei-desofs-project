@@ -1,0 +1,69 @@
+@startuml F-008-component
+title Flow F-008: Secure Backend Component View
+skinparam componentStyle rectangle
+
+package "Interfaces (REST)" {
+  [AuthController]
+  [UserController]
+  [DocumentController]
+  [DepartmentController]
+}
+
+package "Security Boundary" {
+  [JWT Filter]
+  [Authorization Policy]
+}
+
+package "Application Services" {
+  [Auth Service]
+  [User Service]
+  [Document Service]
+  [Department Service]
+  [Audit Service]
+}
+
+package "Infrastructure Adapters" {
+  [User Repository Adapter]
+  [Department Repository Adapter]
+  [Document Repository Adapter]
+  [Audit Repository Adapter]
+  [File Storage Adapter]
+}
+
+database "PostgreSQL" as DB
+folder "Local File Storage" as FS
+
+[AuthController] --> [JWT Filter]
+[UserController] --> [JWT Filter]
+[DocumentController] --> [JWT Filter]
+[DepartmentController] --> [JWT Filter]
+
+[JWT Filter] --> [Authorization Policy]
+
+[AuthController] --> [Auth Service]
+[UserController] --> [User Service]
+[DocumentController] --> [Document Service]
+[DepartmentController] --> [Department Service]
+
+[Auth Service] --> [User Repository Adapter]
+[Auth Service] --> [Audit Service]
+
+[User Service] --> [User Repository Adapter]
+[User Service] --> [Audit Service]
+
+[Document Service] --> [Document Repository Adapter]
+[Document Service] --> [File Storage Adapter]
+[Document Service] --> [Audit Service]
+
+[Department Service] --> [Department Repository Adapter]
+[Department Service] --> [Audit Service]
+
+[Audit Service] --> [Audit Repository Adapter]
+
+[User Repository Adapter] --> DB
+[Department Repository Adapter] --> DB
+[Document Repository Adapter] --> DB
+[Audit Repository Adapter] --> DB
+[File Storage Adapter] --> FS
+
+@enduml

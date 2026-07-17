@@ -1,0 +1,120 @@
+groups:
+  - name: desofs
+
+    rules:
+      - alert: ApplicationDown
+        expr: up{job="desofs-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: desofs-app
+        annotations:
+          summary: Application is down
+          description: desofs-app has not been reachable for more than 1 minute.
+
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: desofs-app
+        annotations:
+          summary: High application response time
+          description: The 95th percentile response time has exceeded 1 second for more than 5 minutes.
+
+      - alert: HighJvmMemoryUsage
+        expr: |
+          (
+            jvm_memory_used_bytes{area="heap"}
+            /
+            jvm_memory_max_bytes{area="heap"}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: desofs-app
+        annotations:
+          summary: High JVM heap memory usage
+          description: JVM heap memory usage has exceeded 90% for more than 5 minutes.
+
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: PostgreSQL exporter is down
+          description: postgres-exporter has not been reachable for more than 1 minute.
+
+      - alert: PostgresConnectionsHigh
+        expr: |
+          sum(pg_stat_activity_count)
+            /
+          sum(pg_settings_max_connections)
+            > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: PostgreSQL connection usage is high
+          description: PostgreSQL is using more than 80% of its configured maximum connections.
+
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: node-exporter
+        annotations:
+          summary: Node exporter is down
+          description: node-exporter has not been reachable for more than 1 minute.
+
+      - alert: HighCPUUsage
+        expr: |
+          100 -
+          (avg by(instance)
+            (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+          > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: High CPU usage detected
+          description: CPU usage has exceeded 80% for more than 5 minutes.
+
+      - alert: LowAvailableMemory
+        expr: |
+          (
+            node_memory_MemAvailable_bytes
+            /
+            node_memory_MemTotal_bytes
+          ) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: Low available memory
+          description: Available memory has fallen below 10% for more than 5 minutes.
+
+      - alert: DiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes
+            /
+            node_filesystem_size_bytes
+          ) < 0.1
+        for: 10m
+        labels:
+          severity: critical
+          service: infrastructure
+        annotations:
+          summary: Low disk space
+          description: Less than 10% disk space remains.

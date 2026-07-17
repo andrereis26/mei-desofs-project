@@ -1,0 +1,64 @@
+@startuml
+title Phase 1 - Domain Model
+
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+legend left
+== Legend ==
+<<AR>> Aggregate Root
+<<Entity>> Entity
+<<VO>> Value Object
+endlegend
+
+package "User Aggregate" {
+  class User <<AR, Entity>> {
+    +id: UUID
+    +username: String
+    +email: String
+    +password: String
+    +role: Role
+    +createdAt: LocalDateTime
+    +departments: Set<Department>
+  }
+
+  enum Role <<VO>> {
+    ADMIN
+    MANAGER
+    USER
+  }
+}
+
+package "Department Aggregate" {
+  class Department <<AR, Entity>> {
+    +id: UUID
+    +name: String
+    +description: String
+    +managers: Set<User>
+    +createdBy: UUID
+    +updatedBy: UUID
+    +createdAt: LocalDateTime
+    +updatedAt: LocalDateTime
+  }
+}
+
+package "Document Aggregate" {
+  class Document <<AR, Entity>> {
+    +id: UUID
+    +filename: String
+    +filepath: String
+    +contentType: String
+    +size: long
+    +owner: User
+    +department: Department
+    +createdAt: LocalDateTime
+  }
+}
+
+User -- Role
+User "0..*" --> "0..*" Department : memberships
+Department "0..*" --> "0..*" User : managers
+Document "1" --> "1" User : owner
+Document "0..1" --> "1" Department : department
+@enduml

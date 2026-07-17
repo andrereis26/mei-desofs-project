@@ -1,0 +1,1 @@
+DESOFS Postman demo text file. This must be rejected because only PDF uploads are allowed.

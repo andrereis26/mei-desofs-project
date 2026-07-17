@@ -1,0 +1,15 @@
+@startuml
+title Flow F-001: Authentication
+
+actor Client
+participant "Authentication Endpoint" as AuthEndpoint
+participant "Authentication Service" as AuthService
+participant "Password Policy" as PasswordPolicy
+
+Client -> AuthEndpoint: Submit credentials
+AuthEndpoint -> AuthService: Authenticate request
+AuthService -> PasswordPolicy: Verify secure policy
+PasswordPolicy --> AuthService: Credentials valid
+AuthService --> AuthEndpoint: Issue access token (bounded lifetime)
+AuthEndpoint --> Client: Return token
+@enduml

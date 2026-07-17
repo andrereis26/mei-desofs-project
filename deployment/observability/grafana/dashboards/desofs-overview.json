@@ -1,0 +1,219 @@
+{
+  "id": null,
+  "uid": "desofs-overview",
+  "title": "DESOFS Observability",
+  "schemaVersion": 39,
+  "version": 2,
+  "timezone": "browser",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Application",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "options": {
+        "content": "# 🚀 Application Metrics",
+        "mode": "markdown"
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Service Up",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "up{job=\"desofs-app\"}", "refId": "A" }
+      ],
+      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Request Rate (RPS)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count[5m]))", "refId": "A" }
+      ],
+      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Error Rate (%)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JVM Heap",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "refId": "A", "legendFormat": "used" },
+        { "expr": "sum(jvm_memory_max_bytes{area=\"heap\"})", "refId": "B", "legendFormat": "max" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 6 }
+    },
+
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "CPU Usage",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "process_cpu_usage * 100", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 6 }
+    },
+
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Application Logs",
+      "datasource": "Loki",
+      "targets": [
+        { "expr": "{service=~\".*app\"}", "refId": "A" }
+      ],
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 8 }
+    },
+
+    {
+      "id": 8,
+      "type": "text",
+      "title": "PostgreSQL",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+      "options": {
+        "content": "# 🐘 PostgreSQL",
+        "mode": "markdown"
+      }
+    },
+
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Postgres Up",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "up{job=\"postgres\"}", "refId": "A" }
+      ],
+      "gridPos": { "x": 0, "y": 22, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Active Connections",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "pg_stat_activity_count", "refId": "A" }
+      ],
+      "gridPos": { "x": 8, "y": 22, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "DB Size",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "pg_database_size_bytes", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "gridPos": { "x": 16, "y": 22, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Cache Hit Ratio",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 6 }
+    },
+
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Transactions",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(pg_stat_database_xact_commit[5m])", "refId": "A", "legendFormat": "commits" },
+        { "expr": "rate(pg_stat_database_xact_rollback[5m])", "refId": "B", "legendFormat": "rollbacks" }
+      ],
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 6 }
+    },
+
+    {
+      "id": 14,
+      "type": "text",
+      "title": "Host",
+      "gridPos": { "x": 0, "y": 34, "w": 24, "h": 1 },
+      "options": {
+        "content": "# 🖥️ Host Metrics",
+        "mode": "markdown"
+      }
+    },
+
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Host Up",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "up{job=\"node\"}", "refId": "A" }
+      ],
+      "gridPos": { "x": 0, "y": 35, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "CPU Usage",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "gridPos": { "x": 8, "y": 35, "w": 8, "h": 6 }
+    },
+
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Memory Usage",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "gridPos": { "x": 16, "y": 35, "w": 8, "h": 6 }
+    }
+
+  ]
+}

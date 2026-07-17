@@ -1,0 +1,20 @@
+name: run-gitleaks
+description: Run Gitleaks with the repository token and optional license key.
+
+inputs:
+  github-token:
+    description: GitHub token for the scan.
+    required: true
+  gitleaks-license:
+    description: Optional Gitleaks license key.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Run Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITLEAKS_LICENSE: ${{ inputs.gitleaks-license }}

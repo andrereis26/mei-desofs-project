@@ -1,0 +1,43 @@
+name: run-spotbugs
+description: Compile the backend and run SpotBugs with FindSecBugs.
+
+inputs:
+  maven-cli-opts:
+    description: Shared Maven CLI options.
+    required: false
+    default: "-B -ntp -f backend/pom.xml"
+
+runs:
+  using: composite
+  steps:
+    - name: Compile backend
+      uses: ./.github/actions/run-maven
+      with:
+        maven-cli-opts: ${{ inputs.maven-cli-opts }}
+        goals: compile
+        extra-args: -Dmaven.test.skip=true -Djacoco.skip=true
+
+    - name: Run SpotBugs analysis
+      uses: ./.github/actions/run-maven
+      with:
+        maven-cli-opts: ${{ inputs.maven-cli-opts }}
+        goals: spotbugs:check
+        extra-args: -Dmaven.test.skip=true -Djacoco.skip=true -Dspotbugs.failOnError=true
+
+    - name: Ensure SpotBugs report exists
+      if: always()
+      shell: bash
+      env:
+        MAVEN_CLI_OPTS: ${{ inputs.maven-cli-opts }}
+      run: |
+        set -euo pipefail
+
+        if [[ -f backend/target/spotbugsXml.xml || -f backend/target/spotbugs.xml ]]; then
+          exit 0
+        fi
+
+        read -r -a cli_opts <<< "${MAVEN_CLI_OPTS}"
+        mvn_args=(mvn)
+        mvn_args+=("${cli_opts[@]}")
+        mvn_args+=(-Dmaven.test.skip=true -Djacoco.skip=true -Dspotbugs.failOnError=false spotbugs:spotbugs)
+        "${mvn_args[@]}"

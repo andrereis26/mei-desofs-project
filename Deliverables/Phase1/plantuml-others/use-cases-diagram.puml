@@ -1,0 +1,51 @@
+@startuml F-007-use-case
+title Use Cases
+left to right direction
+
+actor "Guest" as Guest
+actor "Authenticated User" as User
+actor "Manager" as Manager
+actor "Admin" as Admin
+
+User <|-- Manager
+User <|-- Admin
+
+rectangle "DESOFS Secure API" {
+  usecase "Register" as UC_Register
+  usecase "Login" as UC_Login
+  usecase "View Profile" as UC_ViewProfile
+  usecase "Update Own Profile" as UC_UpdateProfile
+
+  usecase "Upload Document" as UC_UploadDoc
+  usecase "List/Get Documents" as UC_ListDocs
+  usecase "Replace/Delete Own Document" as UC_MaintainOwnDoc
+
+  usecase "Join Department" as UC_JoinDepartment
+  usecase "Create/Update/Delete\nManaged Department" as UC_ManageDept
+
+  usecase "List Users" as UC_ListUsers
+  usecase "Manage Any Department" as UC_AdminManageDept
+  usecase "Access Audit Records" as UC_AuditRead
+}
+
+Guest --> UC_Register
+Guest --> UC_Login
+
+User --> UC_ViewProfile
+User --> UC_UpdateProfile
+User --> UC_UploadDoc
+User --> UC_ListDocs
+User --> UC_MaintainOwnDoc
+User --> UC_JoinDepartment
+
+Manager --> UC_ManageDept
+Manager --> UC_UploadDoc
+Manager --> UC_ListUsers
+
+Admin --> UC_ListUsers
+Admin --> UC_AdminManageDept
+Admin --> UC_AuditRead
+Admin --> UC_UploadDoc
+Admin --> UC_ListDocs
+
+@enduml

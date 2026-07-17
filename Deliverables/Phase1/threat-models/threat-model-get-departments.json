@@ -1,0 +1,633 @@
+{
+  "version": "2.2.0",
+  "summary": {
+    "title": "Get Departments DFD",
+    "owner": "",
+    "description": "",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "Get Departments DFD",
+        "diagramType": "STRIDE",
+        "placeholder": "New STRIDE diagram description",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.2.0",
+        "cells": [
+          {
+            "position": { "x": 30, "y": 270 },
+            "size": { "width": 140, "height": 70 },
+            "attrs": {
+              "text": { "text": "API Client" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "gd-actor-client",
+            "data": {
+              "type": "tm.Actor",
+              "name": "API Client",
+              "description": "Authenticated caller requesting list of departments.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
+          },
+          {
+            "shape": "trust-boundary-curve",
+            "width": 270,
+            "height": 170,
+            "zIndex": 2,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Boundary",
+              "name": "Public API boundary",
+              "description": "Boundary between external request origin and backend ingress.",
+              "isTrustBoundary": true,
+              "hasOpenThreats": false
+            },
+            "id": "gd-boundary-public",
+            "source": { "x": 180, "y": 430 },
+            "target": { "x": 490, "y": 160 },
+            "vertices": [ { "x": 320, "y": 310 } ]
+          },
+          {
+            "position": { "x": 250, "y": 240 },
+            "size": { "width": 190, "height": 120 },
+            "attrs": {
+              "text": { "text": "Security FilterChain\n+ JwtAuthenticationFilter" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 3,
+            "id": "gd-process-security-filter",
+            "data": {
+              "type": "tm.Process",
+              "name": "SecurityFilterChain + JwtAuthenticationFilter",
+              "description": "Enforces authenticated access and loads security context from JWT.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 500, "y": 130 },
+            "size": { "width": 165, "height": 90 },
+            "attrs": {
+              "text": { "text": "JwtService" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 4,
+            "id": "gd-process-jwt-service",
+            "data": {
+              "type": "tm.Process",
+              "name": "JwtService",
+              "description": "Extracts token subject and validates JWT claims/signature.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 500, "y": 260 },
+            "size": { "width": 165, "height": 90 },
+            "attrs": {
+              "text": { "text": "UserService\nloadUserByUsername" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 5,
+            "id": "gd-process-user-details-service",
+            "data": {
+              "type": "tm.Process",
+              "name": "UserService loadUserByUsername",
+              "description": "Loads principal data required by JWT filter.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 700, "y": 260 },
+            "size": { "width": 160, "height": 95 },
+            "attrs": {
+              "text": { "text": "User Repository" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 6,
+            "id": "gd-process-user-repository",
+            "data": {
+              "type": "tm.Process",
+              "name": "UserRepository",
+              "description": "Retrieves user account and role data by username.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 900, "y": 260 },
+            "size": { "width": 150, "height": 70 },
+            "attrs": {
+              "text": { "text": "User DB" },
+              "topLine": { "strokeWidth": 1.5, "strokeDasharray": null },
+              "bottomLine": { "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 7,
+            "id": "gd-store-user-db",
+            "data": {
+              "type": "tm.Store",
+              "name": "User DB",
+              "description": "User account and role storage used for authentication and service-level validation.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isALog": false,
+              "isEncrypted": false,
+              "isSigned": false,
+              "storesCredentials": true,
+              "storesInventory": false,
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 500, "y": 430 },
+            "size": { "width": 180, "height": 120 },
+            "attrs": {
+              "text": { "text": "DepartmentController\nGET /api/departments" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 8,
+            "id": "gd-process-department-controller",
+            "data": {
+              "type": "tm.Process",
+              "name": "DepartmentController GET",
+              "description": "Reads authenticated principal from security context and delegates to listAll(username).",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 730, "y": 430 },
+            "size": { "width": 170, "height": 120 },
+            "attrs": {
+              "text": { "text": "DepartmentService\nlistAll()" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 9,
+            "id": "gd-process-department-service",
+            "data": {
+              "type": "tm.Process",
+              "name": "DepartmentService listAll",
+              "description": "Validates username, verifies requester role exists, retrieves departments, and maps DTO responses.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 950, "y": 430 },
+            "size": { "width": 180, "height": 100 },
+            "attrs": {
+              "text": { "text": "Department Repository" },
+              "body": { "stroke": "#333333", "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 10,
+            "id": "gd-process-department-repository",
+            "data": {
+              "type": "tm.Process",
+              "name": "DepartmentRepository",
+              "description": "Retrieves department entities and associated manager/member relations.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "handlesCardPayment": false,
+              "handlesGoodsOrServices": false,
+              "isWebApplication": false,
+              "privilegeLevel": "",
+              "threats": []
+            }
+          },
+          {
+            "position": { "x": 1160, "y": 440 },
+            "size": { "width": 170, "height": 70 },
+            "attrs": {
+              "text": { "text": "Department DB" },
+              "topLine": { "strokeWidth": 1.5, "strokeDasharray": null },
+              "bottomLine": { "strokeWidth": 1.5, "strokeDasharray": null }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 11,
+            "id": "gd-store-department-db",
+            "data": {
+              "type": "tm.Store",
+              "name": "Department DB",
+              "description": "Persistent storage for department entities and membership mappings.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isALog": false,
+              "isEncrypted": false,
+              "isSigned": false,
+              "storesCredentials": false,
+              "storesInventory": true,
+              "threats": []
+            }
+          },
+          {
+            "shape": "trust-boundary-curve",
+            "width": 300,
+            "height": 180,
+            "zIndex": 12,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Boundary",
+              "name": "Application data boundary",
+              "description": "Boundary containing internal services, repositories, and data stores.",
+              "isTrustBoundary": true,
+              "hasOpenThreats": false
+            },
+            "id": "gd-boundary-internal",
+            "source": { "x": 450, "y": 80 },
+            "target": { "x": 1360, "y": 590 },
+            "vertices": [ { "x": 990, "y": 40 } ]
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 13,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "HTTPS GET /api/departments",
+              "description": "Authenticated list request sent over TLS.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": true,
+              "isPublicNetwork": true,
+              "protocol": "HTTPS",
+              "threats": []
+            },
+            "id": "gd-flow-list-request",
+            "source": { "cell": "gd-actor-client" },
+            "target": { "cell": "gd-process-security-filter" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 14,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Validate bearer token",
+              "description": "Filter uses JwtService to extract username and validate token.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-validate-token",
+            "source": { "cell": "gd-process-security-filter" },
+            "target": { "cell": "gd-process-jwt-service" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 15,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Load principal details",
+              "description": "Filter requests principal user details from UserService.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-load-principal",
+            "source": { "cell": "gd-process-security-filter" },
+            "target": { "cell": "gd-process-user-details-service" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 16,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Lookup user by username",
+              "description": "UserService delegates principal lookup to UserRepository.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-user-repo-lookup",
+            "source": { "cell": "gd-process-user-details-service" },
+            "target": { "cell": "gd-process-user-repository" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 17,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Read user row",
+              "description": "UserRepository reads principal data from User DB.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "JPA",
+              "threats": []
+            },
+            "id": "gd-flow-user-db-read",
+            "source": { "cell": "gd-process-user-repository" },
+            "target": { "cell": "gd-store-user-db" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 18,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Forward authenticated request",
+              "description": "Filter forwards authorized call to department controller.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-controller-pass",
+            "source": { "cell": "gd-process-security-filter" },
+            "target": { "cell": "gd-process-department-controller" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 19,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Invoke listAll(username)",
+              "description": "Controller calls service with authenticated username.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-controller-service",
+            "source": { "cell": "gd-process-department-controller" },
+            "target": { "cell": "gd-process-department-service" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 20,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Verify requester role",
+              "description": "Service resolves requester account to ensure role exists before list operation.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-role-verify",
+            "source": { "cell": "gd-process-department-service" },
+            "target": { "cell": "gd-process-user-repository" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 21,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Fetch all departments",
+              "description": "Service requests all department entities for response mapping.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Internal",
+              "threats": []
+            },
+            "id": "gd-flow-department-findall",
+            "source": { "cell": "gd-process-department-service" },
+            "target": { "cell": "gd-process-department-repository" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 22,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Read department rows",
+              "description": "Repository reads department records and related associations from Department DB.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "JPA",
+              "threats": []
+            },
+            "id": "gd-flow-department-db-read",
+            "source": { "cell": "gd-process-department-repository" },
+            "target": { "cell": "gd-store-department-db" }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "#333333",
+                "targetMarker": { "name": "block" },
+                "sourceMarker": { "name": "" },
+                "strokeDasharray": null
+              }
+            },
+            "zIndex": 23,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Department list response",
+              "description": "Controller returns mapped DepartmentResponseDTO list.",
+              "outOfScope": false,
+              "reasonOutOfScope": "",
+              "hasOpenThreats": false,
+              "isBidirectional": false,
+              "isEncrypted": true,
+              "isPublicNetwork": true,
+              "protocol": "HTTPS",
+              "threats": []
+            },
+            "id": "gd-flow-list-response",
+            "source": { "cell": "gd-process-department-controller" },
+            "target": { "cell": "gd-actor-client" }
+          }
+        ]
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "",
+    "threatTop": 0
+  }
+}

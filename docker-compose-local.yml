@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: desofs-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-rate-limit:
+    image: redis:7-alpine
+    container_name: desofs-redis-rate-limit
+    command: ["redis-server", "--requirepass", "$RATE_LIMIT_REDIS_PASSWORD"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "$RATE_LIMIT_REDIS_PASSWORD", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-token-revocation:
+    image: redis:7-alpine
+    container_name: desofs-redis-revocation
+    command: ["redis-server", "--requirepass", "$TOKEN_REVOCATION_REDIS_PASSWORD"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "$TOKEN_REVOCATION_REDIS_PASSWORD", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

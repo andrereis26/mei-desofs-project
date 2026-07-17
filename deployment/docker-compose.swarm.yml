@@ -1,0 +1,413 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "1"
+          memory: 768M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  redis-rate-limit:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - ${RATE_LIMIT_REDIS_PASSWORD:?RATE_LIMIT_REDIS_PASSWORD is required}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - "900"
+      - "1"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - -a
+        - ${RATE_LIMIT_REDIS_PASSWORD:?RATE_LIMIT_REDIS_PASSWORD is required}
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+    volumes:
+      - redis-rate-limit-data:/data
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  redis-token-revocation:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - ${TOKEN_REVOCATION_REDIS_PASSWORD:?TOKEN_REVOCATION_REDIS_PASSWORD is required}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - "900"
+      - "1"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - -a
+        - ${TOKEN_REVOCATION_REDIS_PASSWORD:?TOKEN_REVOCATION_REDIS_PASSWORD is required}
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+    volumes:
+      - redis-token-revocation-data:/data
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    environment:
+      SERVER_PORT: 8080
+      MANAGEMENT_PORT: ${MANAGEMENT_PORT:-9090}
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      DB_USERNAME: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      FILE_STORAGE_PATH: /opt/desofs/storage
+      FILE_MAX_SIZE_BYTES: ${FILE_MAX_SIZE_BYTES:-52428800}
+      RATE_LIMIT_REDIS_HOST: redis-rate-limit
+      RATE_LIMIT_REDIS_PORT: 6379
+      RATE_LIMIT_REDIS_PASSWORD: ${RATE_LIMIT_REDIS_PASSWORD:?RATE_LIMIT_REDIS_PASSWORD is required}
+      RATE_LIMIT_REDIS_TIMEOUT: ${RATE_LIMIT_REDIS_TIMEOUT:-2s}
+      RATE_LIMIT_REDIS_CONNECT_TIMEOUT: ${RATE_LIMIT_REDIS_CONNECT_TIMEOUT:-1s}
+      RATE_LIMIT_REDIS_SSL: ${RATE_LIMIT_REDIS_SSL:-false}
+      AUTH_RATE_LIMIT_MAX_PER_IP: ${AUTH_RATE_LIMIT_MAX_PER_IP:-10}
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:-60}
+      REGISTER_RATE_LIMIT_MAX_PER_IP: ${REGISTER_RATE_LIMIT_MAX_PER_IP:-5}
+      REGISTER_RATE_LIMIT_WINDOW_SECONDS: ${REGISTER_RATE_LIMIT_WINDOW_SECONDS:-300}
+      AUTH_RATE_LIMIT_MAX_PER_IDENTITY: ${AUTH_RATE_LIMIT_MAX_PER_IDENTITY:-5}
+      REGISTER_RATE_LIMIT_MAX_PER_IDENTITY: ${REGISTER_RATE_LIMIT_MAX_PER_IDENTITY:-3}
+      TOKEN_REVOCATION_STORE: redis
+      TOKEN_REVOCATION_REDIS_HOST: redis-token-revocation
+      TOKEN_REVOCATION_REDIS_PORT: 6379
+      TOKEN_REVOCATION_REDIS_PASSWORD: ${TOKEN_REVOCATION_REDIS_PASSWORD:?TOKEN_REVOCATION_REDIS_PASSWORD is required}
+      TOKEN_REVOCATION_REDIS_DATABASE: ${TOKEN_REVOCATION_REDIS_DATABASE:-1}
+      TOKEN_REVOCATION_REDIS_TIMEOUT: ${TOKEN_REVOCATION_REDIS_TIMEOUT:-2s}
+      TOKEN_REVOCATION_REDIS_SSL: ${TOKEN_REVOCATION_REDIS_SSL:-false}
+      TOKEN_REVOCATION_REDIS_KEY_PREFIX: ${TOKEN_REVOCATION_REDIS_KEY_PREFIX:-revoked-token:}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:InitialRAMPercentage=30.0 -XX:MaxRAMPercentage=75.0}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://127.0.0.1:${MANAGEMENT_PORT:-9090}/actuator/health/readiness | grep -q '"status":"UP"'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    init: true
+    read_only: true
+    ports:
+      - target: 8080
+        published: ${APP_PUBLISHED_PORT:-8080}
+        protocol: tcp
+        mode: ingress
+      - target: ${MANAGEMENT_PORT:-9090}
+        published: ${MANAGEMENT_PORT:-9090}
+        protocol: tcp
+        mode: ingress
+    networks:
+      - backend
+    volumes:
+      - app-storage:/opt/desofs/storage
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 67108864
+    deploy:
+      replicas: ${APP_REPLICAS:-1}
+      endpoint_mode: vip
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 60s
+      update_config:
+        parallelism: 1
+        delay: 15s
+        order: start-first
+        failure_action: rollback
+        monitor: 60s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+        monitor: 60s
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    networks:
+      - backend
+    volumes:
+      - prometheus-data:/prometheus
+      - type: bind
+        source: ./observability/prometheus/prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+      - type: bind
+        source: ./observability/prometheus/rules
+        target: /etc/prometheus/rules
+        read_only: true
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  loki:
+    image: grafana/loki:3.2.1
+    command:
+      - -config.file=/etc/loki/loki.yml
+    networks:
+      - backend
+    volumes:
+      - loki-data:/loki
+      - type: bind
+        source: ./observability/loki/loki.yml
+        target: /etc/loki/loki.yml
+        read_only: true
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    command:
+      - -config.file=/etc/promtail/promtail.yml
+    networks:
+      - backend
+    volumes:
+      - type: bind
+        source: ./observability/promtail/promtail.yml
+        target: /etc/promtail/promtail.yml
+        read_only: true
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: /var/lib/docker/containers
+        target: /var/lib/docker/containers
+        read_only: true
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER is required}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    networks:
+      - backend
+    ports:
+      - target: 3000
+        published: ${GRAFANA_PUBLISHED_PORT:-3000}
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - type: bind
+        source: ./observability/grafana/provisioning/datasources/datasources.yml
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+        read_only: true
+      - type: bind
+        source: ./observability/grafana/provisioning/dashboards/dashboards.yml
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+        read_only: true
+      - type: bind
+        source: ./observability/grafana/dashboards
+        target: /var/lib/grafana/dashboards
+        read_only: true
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+        reservations:
+          cpus: "0.15"
+          memory: 192M
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@desofs_stack_db:5432/${POSTGRES_DB}?sslmode=disable"
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+    networks:
+      - backend
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+
+networks:
+  backend:
+    driver: overlay
+    attachable: false
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-rate-limit-data:
+    driver: local
+  redis-token-revocation-data:
+    driver: local
+  app-storage:
+    driver: local
+  prometheus-data:
+    driver: local
+  loki-data:
+    driver: local
+  grafana-data:
+    driver: local

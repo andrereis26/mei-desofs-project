@@ -1,0 +1,20 @@
+# SDR-009 support: CODEOWNERS for security-impacting areas
+
+* @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+
+# Security-critical backend areas
+/backend/src/main/java/com/desofs/project/config/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/main/java/com/desofs/project/user/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/main/java/com/desofs/project/document/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/main/java/com/desofs/project/audit/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/main/java/com/desofs/project/infrastructure/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/main/java/com/desofs/project/shared/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+
+# Security-relevant configuration
+/backend/src/main/resources/application*.yml @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/backend/src/test/resources/application-test.yml @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+/docker-compose.yml @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+
+# Security tooling and gates
+/.github/workflows/ @Franciscopeixoto47 @andrereis26 @DiogoSilva1013 @GuilhermeCunha79 @KirinDev
+

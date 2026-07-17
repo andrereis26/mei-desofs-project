@@ -1,0 +1,34 @@
+aws_region         = "eu-west-3"
+project_name       = "desofs"
+environment        = "prod"
+vpc_cidr           = "10.42.0.0/16"
+public_subnet_cidr = "10.42.10.0/24"
+instance_type      = "t3.small"
+root_volume_size_gb = 20
+
+# Restrict SSH to your own public IP ranges or to a controlled VPN egress. Careful to not block the github servers
+allowed_ssh_cidrs = [
+  "0.0.0.0/0"
+]
+
+# Keep the API public unless you front it with a separate reverse proxy or load balancer.
+allowed_app_cidrs = [
+  "0.0.0.0/0"
+]
+
+# Grafana public access (restrict to trusted IPs in production).
+allowed_grafana_cidrs = [
+  "0.0.0.0/0"
+]
+
+# Generate a dedicated deploy key pair and paste the public key here.
+deployment_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIreplace-me-with-your-public-key desofs-prod"
+
+deploy_root        = "/opt/desofs-api"
+app_published_port = 8080
+grafana_published_port = 3000
+management_port = 9090
+
+common_tags = {
+  Owner = "DESOFS Team"
+}

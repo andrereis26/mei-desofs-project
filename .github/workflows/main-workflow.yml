@@ -1,0 +1,1191 @@
+name: Production DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: production-devsecops-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  issues: write
+
+env:
+  JAVA_VERSION: "17"
+  MAVEN_CLI_OPTS: -B -ntp -f backend/pom.xml
+  DOCKER_IMAGE_NAME: desofs-api
+  DEPLOY_ROOT: /opt/desofs-api
+  STACK_NAME: desofs
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven package build
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: clean package
+          extra-args: -Dmaven.test.skip=true -Djacoco.skip=true
+
+      - name: Upload backend classes
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-classes
+          path: backend/target/classes
+          if-no-files-found: error
+
+      - name: Upload backend jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          if-no-files-found: error
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven unit tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipITs=true
+
+      - name: Preserve unit coverage report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f backend/target/site/jacoco/jacoco.xml ]]; then
+            cp backend/target/site/jacoco/jacoco.xml backend/target/site/jacoco/jacoco-unit.xml
+          fi
+
+      - name: Publish Surefire report
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Surefire tests
+          path: backend/target/surefire-reports/*.xml
+          reporter: java-junit
+
+      - name: Upload unit test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: |
+            backend/target/surefire-reports/*.xml
+            backend/target/site/jacoco/jacoco.xml
+            backend/target/site/jacoco/jacoco-unit.xml
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run Maven integration tests
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: verify
+          extra-args: -DskipUnitTests=true
+
+      - name: Preserve integration coverage report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f backend/target/site/jacoco/jacoco.xml ]]; then
+            cp backend/target/site/jacoco/jacoco.xml backend/target/site/jacoco/jacoco-integration.xml
+          fi
+
+      - name: Publish Failsafe report
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Failsafe tests
+          path: backend/target/failsafe-reports/TEST-*.xml
+          reporter: java-junit
+
+      - name: Upload integration test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-test-reports
+          path: |
+            backend/target/failsafe-reports/TEST-*.xml
+            backend/target/site/jacoco/jacoco-integration.xml
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: ./.github/actions/run-gitleaks
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+
+  sast-spotbugs:
+    name: sast-spotbugs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run SpotBugs security analysis
+        uses: ./.github/actions/run-spotbugs
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+
+      - name: Upload SpotBugs report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sast-reports
+          path: |
+            backend/target/spotbugs*.xml
+            backend/target/spotbugsXml.xml
+          if-no-files-found: warn
+
+  sca-dependency-check:
+    name: sca-dependency-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Run OWASP Dependency-Check
+        uses: ./.github/actions/run-dependency-check
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          nvd-api-key: ${{ secrets.NVD_API_KEY }}
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sca-reports
+          path: |
+            backend/target/dependency-check-report.xml
+            backend/target/dependency-check-report.html
+          if-no-files-found: warn
+
+  sonarcloud:
+    name: sonarcloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - build
+      - unit-tests
+      - integration-tests
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up backend toolchain
+        uses: ./.github/actions/setup-backend-java
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Generate coverage for SonarQube
+        uses: ./.github/actions/run-maven
+        with:
+          maven-cli-opts: ${{ env.MAVEN_CLI_OPTS }}
+          goals: clean verify
+          extra-args: -DskipITs=true
+
+      - name: Run SonarQube scan
+        uses: ./.github/actions/run-sonar
+        with:
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+
+  dast-zap-baseline:
+    name: dast-zap-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download backend jar
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-jar
+          path: backend/target
+
+      - name: Prepare DAST runtime environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          postgres_password="$(openssl rand -hex 24)"
+          rate_limit_redis_password="$(openssl rand -hex 24)"
+          token_revocation_redis_password="$(openssl rand -hex 24)"
+          jwt_secret="$(openssl rand -hex 32)"
+
+          {
+            echo "POSTGRES_DB=desofs_db"
+            echo "POSTGRES_USER=desofs_user"
+            echo "POSTGRES_PASSWORD=${postgres_password}"
+            echo "DB_URL=jdbc:postgresql://db:5432/desofs_db"
+            echo "DB_USERNAME=desofs_user"
+            echo "DB_PASSWORD=${postgres_password}"
+            echo "FILE_STORAGE_PATH=/opt/desofs/storage"
+            echo "FILE_MAX_SIZE_BYTES=52428800"
+            echo "RATE_LIMIT_REDIS_HOST=redis-rate-limit"
+            echo "RATE_LIMIT_REDIS_PORT=6379"
+            echo "RATE_LIMIT_REDIS_PASSWORD=${rate_limit_redis_password}"
+            echo "RATE_LIMIT_REDIS_TIMEOUT=2s"
+            echo "RATE_LIMIT_REDIS_CONNECT_TIMEOUT=1s"
+            echo "RATE_LIMIT_REDIS_SSL=false"
+            echo "AUTH_RATE_LIMIT_MAX_PER_IP=200"
+            echo "AUTH_RATE_LIMIT_WINDOW_SECONDS=60"
+            echo "REGISTER_RATE_LIMIT_MAX_PER_IP=200"
+            echo "REGISTER_RATE_LIMIT_WINDOW_SECONDS=300"
+            echo "AUTH_RATE_LIMIT_MAX_PER_IDENTITY=200"
+            echo "REGISTER_RATE_LIMIT_MAX_PER_IDENTITY=200"
+            echo "TOKEN_REVOCATION_STORE=redis"
+            echo "TOKEN_REVOCATION_REDIS_HOST=redis-token-revocation"
+            echo "TOKEN_REVOCATION_REDIS_PORT=6379"
+            echo "TOKEN_REVOCATION_REDIS_PASSWORD=${token_revocation_redis_password}"
+            echo "TOKEN_REVOCATION_REDIS_DATABASE=1"
+            echo "TOKEN_REVOCATION_REDIS_TIMEOUT=2s"
+            echo "TOKEN_REVOCATION_REDIS_SSL=false"
+            echo "TOKEN_REVOCATION_REDIS_KEY_PREFIX=revoked-token:"
+            echo "JWT_SECRET=${jwt_secret}"
+            echo "JWT_EXPIRATION=86400000"
+          } > .env
+
+      - name: Start API for DAST
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --project-name desofs-dast --env-file .env \
+            -f docker-compose.yml \
+            -f .github/dast/docker-compose.dast.yml \
+            up -d --build
+
+      - name: Wait for API readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:9090/actuator/health/readiness | grep -q '"status":"UP"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+
+          docker compose --project-name desofs-dast logs --no-color --tail=200
+          exit 1
+
+      - name: Acquire DAST authentication token
+        id: dast-auth
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response="$(curl -fsS \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"bootstrap_admin","password":"ChangeMe123!"}' \
+            http://127.0.0.1:8080/api/auth/login)"
+
+          token="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["token"])' <<< "${response}")"
+          echo "::add-mask::${token}"
+          echo "token=${token}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run OWASP ZAP API baseline scan
+        shell: bash
+        env:
+          DAST_AUTH_TOKEN: ${{ steps.dast-auth.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p zap-reports
+          chmod 777 zap-reports
+
+          zap_options="-config replacer.full_list(0).description=auth-header"
+          zap_options+=" -config replacer.full_list(0).enabled=true"
+          zap_options+=" -config replacer.full_list(0).matchtype=REQ_HEADER"
+          zap_options+=" -config replacer.full_list(0).matchstr=Authorization"
+          zap_options+=" -config replacer.full_list(0).replacement=Bearer ${DAST_AUTH_TOKEN}"
+
+          docker run --rm --network host \
+            -v "${PWD}/.github/dast:/zap/dast:ro" \
+            -v "${PWD}/zap-reports:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+              -t /zap/dast/openapi.yml \
+              -f openapi \
+              -S \
+              -I \
+              -J zap-api-scan.json \
+              -r zap-api-scan.html \
+              -w zap-api-scan.md \
+              -x zap-api-scan.xml \
+              -z "${zap_options}"
+
+      - name: Enforce DAST High/Critical gate
+        run: python3 .github/scripts/zap-gate.py zap-reports/zap-api-scan.json
+
+      - name: Upload DAST reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-reports
+          path: |
+            zap-reports/zap-api-scan.json
+            zap-reports/zap-api-scan.html
+            zap-reports/zap-api-scan.md
+            zap-reports/zap-api-scan.xml
+          if-no-files-found: warn
+
+      - name: Collect DAST runtime logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p zap-reports
+          docker compose --project-name desofs-dast logs --no-color > zap-reports/dast-runtime.log || true
+
+      - name: Upload DAST runtime logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-runtime-logs
+          path: zap-reports/dast-runtime.log
+          if-no-files-found: ignore
+
+      - name: Stop DAST runtime
+        if: always()
+        shell: bash
+        run: docker compose --project-name desofs-dast down -v --remove-orphans
+
+  required-devsecops-gates:
+    name: required-devsecops-gates
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - build
+      - unit-tests
+      - integration-tests
+      - secret-scan
+      - sast-spotbugs
+      - sca-dependency-check
+      - sonarcloud
+      - dast-zap-baseline
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download unit test reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: unit-test-reports
+          path: test-reports/unit
+
+      - name: Download integration test reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: integration-test-reports
+          path: test-reports/integration
+
+      - name: Download SCA reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: sca-reports
+          path: security-reports/sca
+
+      - name: Download SAST reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: sast-reports
+          path: security-reports/sast
+
+      - name: Download DAST reports
+        if: always()
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: dast-reports
+          path: security-reports/dast
+
+      - name: Test and coverage summary
+        if: always()
+        run: python3 .github/scripts/test-summary.py
+
+      - name: Security summary
+        if: always()
+        run: python3 .github/scripts/security-summary.py
+
+      - name: SonarCloud summary
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: python3 .github/scripts/sonar-summary.py
+
+      - name: Enforce all required gates passed
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const needs = ${{ toJson(needs) }};
+            const failed = Object.entries(needs)
+              .filter(([, value]) => value.result !== 'success')
+              .map(([key, value]) => `${key}: ${value.result}`);
+
+            if (failed.length > 0) {
+              core.setFailed(`Required DevSecOps gates failed: ${failed.join(', ')}`);
+              return;
+            }
+
+            core.info('All required DevSecOps gates passed.');
+
+  publish-container-image:
+    name: publish-container-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - required-devsecops-gates
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    outputs:
+      version_tag: ${{ steps.release-metadata.outputs.version_tag }}
+      image_repo: ${{ steps.release-metadata.outputs.image_repo }}
+      image_ref: ${{ steps.release-metadata.outputs.image_ref }}
+      latest_ref: ${{ steps.release-metadata.outputs.latest_ref }}
+      image_digest: ${{ steps.capture-digest.outputs.image_digest }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download backend jar
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-jar
+          path: backend/target
+
+      - name: Compute release metadata
+        id: release-metadata
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_IMAGE_NAME: ${{ env.DOCKER_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+
+          pom_version="$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          namespace = {"pom": "http://maven.apache.org/POM/4.0.0"}
+          root = ET.parse("backend/pom.xml").getroot()
+          print(root.find("pom:version", namespace).text)
+          PY
+          )"
+          base_version="${pom_version%-SNAPSHOT}"
+          version_tag="v${base_version}-build.${GITHUB_RUN_NUMBER}"
+          image_repo="docker.io/${DOCKERHUB_USERNAME}/${DOCKER_IMAGE_NAME}"
+          image_ref="${image_repo}:${version_tag}"
+          latest_ref="${image_repo}:latest"
+
+          {
+            echo "version_tag=${version_tag}"
+            echo "image_repo=${image_repo}"
+            echo "image_ref=${image_ref}"
+            echo "latest_ref=${latest_ref}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build release image
+        shell: bash
+        env:
+          IMAGE_REF: ${{ steps.release-metadata.outputs.image_ref }}
+          LATEST_REF: ${{ steps.release-metadata.outputs.latest_ref }}
+        run: |
+          set -euo pipefail
+
+          docker build --pull \
+            --file backend/Dockerfile.prod \
+            --tag "${IMAGE_REF}" \
+            --tag "${LATEST_REF}" \
+            backend
+
+      - name: Generate Trivy SARIF report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.release-metadata.outputs.image_ref }}
+          format: sarif
+          output: trivy-image-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: true
+          hide-progress: true
+          exit-code: "0"
+
+      - name: Enforce Trivy High/Critical gate
+        id: trivy-gate
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.release-metadata.outputs.image_ref }}
+          format: table
+          output: trivy-image-results.txt
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          hide-progress: true
+          exit-code: "1"
+          skip-setup-trivy: true
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: container-scan-reports
+          path: |
+            trivy-image-results.sarif
+            trivy-image-results.txt
+          if-no-files-found: error
+
+      - name: Upload Trivy SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image-results.sarif
+
+      - name: Fail if container scan found blocking vulnerabilities
+        if: steps.trivy-gate.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Trivy found High or Critical vulnerabilities. Publication is blocked."
+          exit 1
+
+      - name: Authenticate to Docker Hub
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
+
+      - name: Push immutable version tag
+        shell: bash
+        env:
+          IMAGE_REF: ${{ steps.release-metadata.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REF}"
+
+      - name: Push rolling latest tag
+        shell: bash
+        env:
+          LATEST_REF: ${{ steps.release-metadata.outputs.latest_ref }}
+        run: |
+          set -euo pipefail
+          docker push "${LATEST_REF}"
+
+      - name: Capture published digest
+        id: capture-digest
+        shell: bash
+        env:
+          IMAGE_REF: ${{ steps.release-metadata.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+
+          manifest_json="$(docker buildx imagetools inspect "${IMAGE_REF}" --format '{{json .Manifest}}')"
+          image_digest="$(python3 -c 'import json, sys; print(json.loads(sys.stdin.read())["digest"])' <<< "${manifest_json}")"
+
+          echo "image_digest=${image_digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write image metadata artifact
+        shell: bash
+        env:
+          VERSION_TAG: ${{ steps.release-metadata.outputs.version_tag }}
+          IMAGE_REF: ${{ steps.release-metadata.outputs.image_ref }}
+          LATEST_REF: ${{ steps.release-metadata.outputs.latest_ref }}
+          IMAGE_DIGEST: ${{ steps.capture-digest.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+
+          cat > container-image-metadata.json <<EOF
+          {
+            "versionTag": "${VERSION_TAG}",
+            "imageRef": "${IMAGE_REF}",
+            "latestRef": "${LATEST_REF}",
+            "digest": "${IMAGE_DIGEST}",
+            "workflowRunUrl": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          }
+          EOF
+
+      - name: Upload image metadata artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: container-image-metadata
+          path: container-image-metadata.json
+          if-no-files-found: error
+
+  github-release:
+    name: github-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - publish-container-image
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download image metadata artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: container-image-metadata
+          path: release-assets
+
+      - name: Parse published image metadata
+        id: image-metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY' >> "${GITHUB_OUTPUT}"
+          import json
+          from pathlib import Path
+
+          metadata = json.loads(Path("release-assets/container-image-metadata.json").read_text())
+          print(f"version_tag={metadata['versionTag']}")
+          print(f"image_ref={metadata['imageRef']}")
+          print(f"image_digest={metadata['digest']}")
+          PY
+
+      - name: Download container scan reports
+        uses: actions/download-artifact@v8
+        with:
+          name: container-scan-reports
+          path: release-assets
+
+      - name: Prepare release notes
+        shell: bash
+        env:
+          VERSION_TAG: ${{ steps.image-metadata.outputs.version_tag }}
+          IMAGE_REF: ${{ steps.image-metadata.outputs.image_ref }}
+          IMAGE_DIGEST: ${{ steps.image-metadata.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+
+          cat > release-notes.md <<EOF
+          ## Release summary
+
+          - Version tag: \`${VERSION_TAG}\`
+          - Published image: \`${IMAGE_REF}\`
+          - Immutable digest: \`${IMAGE_REF%@*}@${IMAGE_DIGEST}\`
+          - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Security gate: Trivy container scan passed with no High/Critical findings before publication.
+          EOF
+
+      - name: Create or update GitHub Release
+        uses: actions/github-script@v9
+        env:
+          VERSION_TAG: ${{ steps.image-metadata.outputs.version_tag }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const tag = process.env.VERSION_TAG;
+            const body = fs.readFileSync('release-notes.md', 'utf8');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let release;
+
+            try {
+              release = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag,
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            let releaseData;
+
+            if (release) {
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.data.id,
+                tag_name: tag,
+                name: tag,
+                body,
+                draft: false,
+                prerelease: false,
+              });
+              releaseData = release.data;
+              core.info(`Updated existing release ${tag}.`);
+            } else {
+              const createdRelease = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: tag,
+                body,
+                draft: false,
+                prerelease: false,
+              });
+              releaseData = createdRelease.data;
+              core.info(`Created release ${tag}.`);
+            }
+
+            const assetPaths = [
+              'release-assets/container-image-metadata.json',
+              'release-assets/trivy-image-results.txt',
+            ];
+
+            for (const assetPath of assetPaths) {
+              const assetName = path.basename(assetPath);
+              const existingAsset = releaseData.assets.find(asset => asset.name === assetName);
+
+              if (existingAsset) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner,
+                  repo,
+                  asset_id: existingAsset.id,
+                });
+              }
+
+              await github.rest.repos.uploadReleaseAsset({
+                url: releaseData.upload_url,
+                headers: {
+                  'content-type': 'application/octet-stream',
+                  'content-length': fs.statSync(assetPath).size,
+                },
+                name: assetName,
+                data: fs.readFileSync(assetPath),
+              });
+            }
+
+  deploy-production:
+    name: deploy-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - publish-container-image
+      - github-release
+    environment: production
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Download image metadata artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: container-image-metadata
+          path: deployment-metadata
+
+      - name: Parse published image metadata
+        id: image-metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY' >> "${GITHUB_OUTPUT}"
+          import json
+          from pathlib import Path
+
+          metadata = json.loads(Path("deployment-metadata/container-image-metadata.json").read_text())
+          print(f"image_ref={metadata['imageRef']}")
+          PY
+
+      - name: Configure SSH trust and key material
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.AWS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 "${HOME}/.ssh"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_deploy"
+          chmod 600 "${HOME}/.ssh/id_deploy"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 644 "${HOME}/.ssh/known_hosts"
+
+      - name: Sync deployment bundle to the AWS EC2 host
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.AWS_SSH_HOST }}
+          SSH_PORT: ${{ secrets.AWS_SSH_PORT }}
+          SSH_USER: ${{ secrets.AWS_SSH_USER }}
+          DEPLOY_ROOT: ${{ env.DEPLOY_ROOT }}
+        run: |
+          set -euo pipefail
+
+          tar -C . -czf - deployment | ssh -i "${HOME}/.ssh/id_deploy" -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
+            "mkdir -p '${DEPLOY_ROOT}' && tar -xzf - -C '${DEPLOY_ROOT}'"
+
+      - name: Deploy immutable image to AWS Docker Swarm host
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.AWS_SSH_HOST }}
+          SSH_PORT: ${{ secrets.AWS_SSH_PORT }}
+          SSH_USER: ${{ secrets.AWS_SSH_USER }}
+          DEPLOY_ROOT: ${{ env.DEPLOY_ROOT }}
+          STACK_NAME: ${{ env.STACK_NAME }}
+          IMAGE_REF: ${{ steps.image-metadata.outputs.image_ref }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          HEALTHCHECK_URL: ${{ secrets.AWS_HEALTHCHECK_URL }}
+          DOPPLER_PROJECT: ${{ secrets.DOPPLER_PROJECT }}
+          DOPPLER_CONFIG: ${{ secrets.DOPPLER_CONFIG }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          printf -v remote_command "%s " \
+            "STACK_NAME=$(printf '%q' "${STACK_NAME}")" \
+            "DEPLOY_ROOT=$(printf '%q' "${DEPLOY_ROOT}")" \
+            "APP_IMAGE=$(printf '%q' "${IMAGE_REF}")" \
+            "DOCKERHUB_USERNAME=$(printf '%q' "${DOCKERHUB_USERNAME}")" \
+            "DOCKERHUB_TOKEN=$(printf '%q' "${DOCKERHUB_TOKEN}")" \
+            "HEALTHCHECK_URL=$(printf '%q' "${HEALTHCHECK_URL}")" \
+            "DOPPLER_PROJECT=$(printf '%q' "${DOPPLER_PROJECT}")" \
+            "DOPPLER_CONFIG=$(printf '%q' "${DOPPLER_CONFIG}")" \
+            "DOPPLER_TOKEN=$(printf '%q' "${DOPPLER_TOKEN}")" \
+            "bash $(printf '%q' "${DEPLOY_ROOT}/deployment/remote-deploy.sh")"
+
+          ssh -i "${HOME}/.ssh/id_deploy" -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" "${remote_command}"
+
+  post-deploy-validation:
+    name: post-deploy-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - deploy-production
+    environment: production
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Resolve production validation URLs
+        shell: bash
+        env:
+          AWS_APP_BASE_URL: ${{ secrets.AWS_APP_BASE_URL }}
+          AWS_SSH_HOST: ${{ secrets.AWS_SSH_HOST }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY' >> "${GITHUB_ENV}"
+          import ipaddress
+          import os
+          from urllib.parse import urlsplit, urlunsplit
+
+          def is_loopback(hostname):
+              if hostname in {"localhost", "localhost."}:
+                  return True
+              try:
+                  return ipaddress.ip_address(hostname).is_loopback
+              except ValueError:
+                  return False
+
+          def normalize_base_url(raw_value, name):
+              parsed = urlsplit(raw_value)
+              if not parsed.scheme or not parsed.netloc:
+                  raise SystemExit(f"{name} must be an absolute URL.")
+              if is_loopback(parsed.hostname or ""):
+                  raise SystemExit(
+                      f"{name} must be reachable from GitHub-hosted runners; got loopback host {parsed.hostname}."
+                  )
+              path = parsed.path.rstrip("/")
+              return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+          def join_url(base_url, path):
+              return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+          app_base_url = os.environ.get("AWS_APP_BASE_URL", "").strip()
+          if not app_base_url:
+              ssh_host = os.environ.get("AWS_SSH_HOST", "").strip()
+              if not ssh_host:
+                  raise SystemExit("AWS_APP_BASE_URL is required when AWS_SSH_HOST is not set.")
+              app_base_url = f"http://{ssh_host}"
+
+          base_url = normalize_base_url(app_base_url, "AWS_APP_BASE_URL")
+
+          print(f"PERF_TARGET_URLS={join_url(base_url, '/api/users')}")
+          print(f"SECURITY_BASE_URL={base_url}")
+          PY
+
+      - name: Run production performance smoke tests
+        env:
+          PERF_REQUESTS: "20"
+          PERF_P95_MS: "2000"
+          PERF_AVG_MS: "1200"
+          PERF_SUCCESS_STATUSES: "401,403"
+        run: python3 .github/scripts/post-deploy-performance.py
+
+      - name: Run production lightweight security tests
+        env:
+          SECURITY_PROTECTED_PATH: /api/users
+          SECURITY_LOGIN_PATH: /api/auth/login
+        run: python3 .github/scripts/post-deploy-security.py
+
+  rollback-on-post-deploy-failure:
+    name: rollback-on-post-deploy-failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - deploy-production
+      - post-deploy-validation
+    if: ${{ always() && needs.post-deploy-validation.result == 'failure' }}
+    environment: production
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Configure SSH trust and key material
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.AWS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 "${HOME}/.ssh"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_deploy"
+          chmod 600 "${HOME}/.ssh/id_deploy"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 644 "${HOME}/.ssh/known_hosts"
+
+      - name: Trigger rollback on AWS Docker Swarm host
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.AWS_SSH_HOST }}
+          SSH_PORT: ${{ secrets.AWS_SSH_PORT }}
+          SSH_USER: ${{ secrets.AWS_SSH_USER }}
+          DEPLOY_ROOT: ${{ env.DEPLOY_ROOT }}
+          STACK_NAME: ${{ env.STACK_NAME }}
+          HEALTHCHECK_URL: ${{ secrets.AWS_HEALTHCHECK_URL }}
+        run: |
+          set -euo pipefail
+
+          printf -v remote_command "%s " \
+            "STACK_NAME=$(printf '%q' "${STACK_NAME}")" \
+            "DEPLOY_ROOT=$(printf '%q' "${DEPLOY_ROOT}")" \
+            "HEALTHCHECK_URL=$(printf '%q' "${HEALTHCHECK_URL}")" \
+            "bash $(printf '%q' "${DEPLOY_ROOT}/deployment/remote-rollback.sh")"
+
+          ssh -i "${HOME}/.ssh/id_deploy" -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" "${remote_command}"
+
+  notify-deployment:
+    name: notify-deployment
+    runs-on: ubuntu-latest
+    needs:
+      - publish-container-image
+      - deploy-production
+      - post-deploy-validation
+      - rollback-on-post-deploy-failure
+    if: always()
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Determine deployment status
+        id: compute_status
+        env:
+          DEPLOY_RESULT: ${{ needs.deploy-production.result }}
+          VALIDATION_RESULT: ${{ needs.post-deploy-validation.result }}
+          ROLLBACK_RESULT: ${{ needs.rollback-on-post-deploy-failure.result }}
+          VERSION_TAG: ${{ needs.publish-container-image.outputs.version_tag }}
+          IMAGE_REF: ${{ needs.publish-container-image.outputs.image_ref }}
+        run: |
+          echo "deploy_result=${DEPLOY_RESULT}" >> "$GITHUB_OUTPUT"
+          echo "validation_result=${VALIDATION_RESULT}" >> "$GITHUB_OUTPUT"
+          echo "rollback_result=${ROLLBACK_RESULT}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+
+          if [ "${DEPLOY_RESULT}" != "success" ]; then
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            echo "reason=deploy_failed" >> "$GITHUB_OUTPUT"
+          elif [ "${VALIDATION_RESULT}" != "success" ]; then
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            echo "reason=validation_failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=passed" >> "$GITHUB_OUTPUT"
+            echo "reason=ok" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create deployment alert issue
+        uses: actions/github-script@v9
+        env:
+          ISSUE_TITLE: "Deployment ${{ steps.compute_status.outputs.version_tag }} — ${{ steps.compute_status.outputs.status }}"
+          ISSUE_BODY: |
+            Deployment: ${{ steps.compute_status.outputs.version_tag }}
+            Image: ${{ steps.compute_status.outputs.image_ref }}
+            Status: ${{ steps.compute_status.outputs.status }}
+            Reason: ${{ steps.compute_status.outputs.reason }}
+            Workflow: ${{ github.workflow }} (run ${{ github.run_id }})
+            Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const title = process.env.ISSUE_TITLE;
+            const body = process.env.ISSUE_BODY;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            function readCodeOwners() {
+              const candidatePaths = [
+                '.github/CODEOWNERS',
+                'CODEOWNERS',
+                'docs/CODEOWNERS',
+              ];
+
+              for (const candidatePath of candidatePaths) {
+                if (fs.existsSync(candidatePath)) {
+                  return fs.readFileSync(candidatePath, 'utf8');
+                }
+              }
+
+              return '';
+            }
+
+            function parseCodeOwnerMentions(contents) {
+              const owners = [];
+
+              for (const rawLine of contents.split(/\r?\n/)) {
+                const line = rawLine.split('#')[0].trim();
+                if (!line) {
+                  continue;
+                }
+
+                const parts = line.split(/\s+/);
+                for (const part of parts.slice(1)) {
+                  if (part.startsWith('@')) {
+                    owners.push(part);
+                  }
+                }
+              }
+
+              return [...new Set(owners)];
+            }
+
+            const codeOwnerMentions = parseCodeOwnerMentions(readCodeOwners());
+            const assignableUsers = codeOwnerMentions
+              .filter(mention => /^@[A-Za-z0-9-]+$/.test(mention))
+              .map(mention => mention.slice(1));
+
+            const codeOwnersSection = codeOwnerMentions.length > 0
+              ? `\n\nCode owner reviewers: ${codeOwnerMentions.join(' ')}`
+              : '\n\nCode owner reviewers: none found in CODEOWNERS.';
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: `${body}${codeOwnersSection}`,
+              labels: ['deployment','alert']
+            });
+
+            if (assignableUsers.length > 0) {
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: issue.data.number,
+                  assignees: assignableUsers,
+                });
+                core.info(`Assigned deployment issue to CODEOWNERS users: ${assignableUsers.join(', ')}`);
+              } catch (error) {
+                core.warning(`Could not assign CODEOWNERS users to deployment issue: ${error.message}`);
+              }
+            }

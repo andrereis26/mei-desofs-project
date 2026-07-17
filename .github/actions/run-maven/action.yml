@@ -1,0 +1,41 @@
+name: run-maven
+description: Run Maven with the standard backend command-line options.
+
+inputs:
+  goals:
+    description: Maven goals or phases to execute.
+    required: true
+  extra-args:
+    description: Additional Maven arguments.
+    required: false
+    default: ""
+  maven-cli-opts:
+    description: Shared Maven CLI options.
+    required: false
+    default: "-B -ntp -f backend/pom.xml"
+
+runs:
+  using: composite
+  steps:
+    - name: Run Maven
+      shell: bash
+      env:
+        MAVEN_CLI_OPTS: ${{ inputs.maven-cli-opts }}
+        MAVEN_EXTRA_ARGS: ${{ inputs.extra-args }}
+        MAVEN_GOALS: ${{ inputs.goals }}
+      run: |
+        set -euo pipefail
+
+        maven_command=(mvn)
+        read -r -a cli_opts <<< "${MAVEN_CLI_OPTS}"
+        maven_command+=("${cli_opts[@]}")
+
+        if [[ -n "${MAVEN_EXTRA_ARGS}" ]]; then
+          read -r -a extra_args <<< "${MAVEN_EXTRA_ARGS}"
+          maven_command+=("${extra_args[@]}")
+        fi
+
+        read -r -a goals <<< "${MAVEN_GOALS}"
+        maven_command+=("${goals[@]}")
+
+        "${maven_command[@]}"

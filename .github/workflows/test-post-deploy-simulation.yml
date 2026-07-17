@@ -1,0 +1,76 @@
+name: Simulate Post-deploy Failure (manual test)
+
+on:
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'If true, post-deploy validation will fail'
+        required: false
+        default: 'true'
+
+permissions:
+  issues: write
+
+jobs:
+  simulate_deploy:
+    name: Simulate deploy
+    runs-on: ubuntu-latest
+    outputs:
+      deployed: ${{ steps.set.outputs.deployed }}
+    steps:
+      - name: Set deployed output
+        id: set
+        run: |
+          echo "::set-output name=deployed::true"
+
+  post-deploy-validation:
+    name: Post-deploy validation (simulation)
+    runs-on: ubuntu-latest
+    needs: simulate_deploy
+    steps:
+      - name: Simulate validation
+        run: |
+          if [[ "${{ github.event.inputs.simulate_failure }}" == "true" ]]; then
+            echo "Simulating post-deploy validation FAILURE"
+            exit 1
+          else
+            echo "Simulating post-deploy validation SUCCESS"
+          fi
+
+  rollback_on_failure:
+    name: Rollback (simulation)
+    runs-on: ubuntu-latest
+    needs: post-deploy-validation
+    if: ${{ needs.post-deploy-validation.result == 'failure' }}
+    steps:
+      - name: Simulate rollback
+        run: |
+          echo "Rollback simulated — no SSH performed in this test workflow."
+
+  notify-deployment:
+    name: Notify (create issue)
+    runs-on: ubuntu-latest
+    needs: [post-deploy-validation, rollback_on_failure]
+    if: always()
+    steps:
+      - name: Create GitHub Issue about simulated deployment
+        uses: actions/github-script@v9
+        env:
+          ISSUE_TITLE: "Simulated deployment: ${{ needs.post-deploy-validation.result }}"
+          ISSUE_BODY: |
+            Simulated deployment run triggered manually.
+
+            - Post-deploy-validation result: ${{ needs.post-deploy-validation.result }}
+            - Rollback executed: ${{ needs.rollback_on_failure.result }}
+            - Actor: ${{ github.actor }}
+        with:
+          script: |
+            const title = process.env.ISSUE_TITLE;
+            const body = process.env.ISSUE_BODY;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['deployment','simulation']
+            });
