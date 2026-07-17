@@ -10,6 +10,8 @@ With collaboration of:
 - [@DiogoSilva1013](https://github.com/DiogoSilva1013)
 - [@Franciscopeixoto47](https://github.com/Franciscopeixoto47)
 
+Upload private repo from college organization and disabled Actions to not blow up my plan :p
+
 ## Objective
 
 Develop a secure REST API following the SSDLC (Secure Software Development Life Cycle) process, applying Domain-Driven Design (DDD) principles and security best practices.
