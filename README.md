@@ -1,7 +1,14 @@
 
 # MEI DESOFS – Secure REST API - DocAudit
 
-Project for the course **Secure Software Development (DESOFS)**.
+Project for the course **Secure Software Development (DESOFS)**. 
+
+With collaboration of:
+- [@andrereis26](https://github.com/andrereis26)
+- [@KirinDev](https://github.com/KirinDev)
+- [@GuilhermeCunha79](https://github.com/GuilhermeCunha79)
+- [@DiogoSilva1013](https://github.com/DiogoSilva1013)
+- [@Franciscopeixoto47](https://github.com/Franciscopeixoto47)
 
 ## Objective
 
