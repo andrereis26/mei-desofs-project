@@ -23,7 +23,7 @@
         <bucket4j-spring-boot-starter.version>0.13.0</bucket4j-spring-boot-starter.version>
         <bucket4j.version>8.14.0</bucket4j.version>
         <caffeine-jcache.version>3.2.4</caffeine-jcache.version>
-        <logstash-logback-encoder.version>8.0</logstash-logback-encoder.version>
+        <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
         <log4j2.version>2.26.0</log4j2.version>
         <netty.version>4.1.135.Final</netty.version>
         <pdfbox.version>3.0.5</pdfbox.version>
